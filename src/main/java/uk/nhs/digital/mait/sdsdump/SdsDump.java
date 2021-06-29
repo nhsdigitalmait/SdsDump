@@ -18,6 +18,7 @@ package uk.nhs.digital.mait.sdsdump;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Hashtable;
 import javax.naming.Context;
@@ -31,25 +32,44 @@ import static javax.naming.directory.SearchControls.SUBTREE_SCOPE;
 import javax.naming.directory.SearchResult;
 
 /**
+ * Extracts data from an sds ldap server and creates message originator format
+ * xml dumps of the data
  *
  * @author simonfarrow
  */
 public class SdsDump {
 
+    /**
+     *
+     * @param args[0] ldap endpoint url
+     * @param args[1] xml output dump file name
+     * @param args[2..n] one or more ods codes to extract
+     * @throws NamingException
+     * @throws IOException
+     */
     public static void main(String[] args) throws NamingException, IOException {
-        //ldapServer = "ldap://192.168.128.11:389"; // OpenTest
-        String ldapServer = "ldaps://orange.testlab.nhs.uk/"; // orange
-        String outputFile = "sdsdump.xml";
-        new SdsDump(ldapServer, outputFile, new String[]{"A20047", "B82617"});
+        if (args.length == 0) {
+            //ldapServer = "ldap://192.168.128.11:389"; // OpenTest
+            String ldapServer = "ldaps://orange.testlab.nhs.uk"; // orange
+            String outputFile = "sdsdump.xml";
+            new SdsDump(ldapServer, outputFile, new String[]{"A20047", "B82617"});
+        } else if (args.length > 2) {
+            String ldapServer = args[0];
+            String outputFile = args[1];
+            new SdsDump(ldapServer, outputFile, Arrays.copyOfRange(args, 2, args.length));
+        } else {
+            System.err.println("Incorrect number of parameters usage java -jar sdsdump.jar <ldap endpoint> <dump file name> <ODS Code>+");
+        }
     }
 
     /**
      * Constructor
+     *
      * @param ldapServer
      * @param outputFile
      * @param odsCodes
      * @throws NamingException
-     * @throws IOException 
+     * @throws IOException
      */
     public SdsDump(String ldapServer, String outputFile, String[] odsCodes) throws NamingException, IOException {
         @SuppressWarnings("UseOfObsoleteCollectionType")
@@ -67,10 +87,9 @@ public class SdsDump {
         searchControls.setSearchScope(SUBTREE_SCOPE);
 
         try (
-                 FileWriter fw = new FileWriter(outputFile)) {
+                FileWriter fw = new FileWriter(outputFile)) {
             fw.write("<reference type=\"sdsDump\">\r\n");
 
-            //ahm = queryOrgByOdsCode(ctx, searchControls, odsCode);
             for (String odsCode : odsCodes) {
                 ArrayList<HashMap<String, ArrayList<String>>> ahm = queryServiceByOdsCode(ctx, searchControls, odsCode);
                 dumpODS(ahm, ctx, searchControls, odsCode, fw);
@@ -100,6 +119,7 @@ public class SdsDump {
     private ArrayList<HashMap<String, ArrayList<String>>> queryServiceByOdsCode(InitialDirContext ctx, SearchControls searchControls, String odsCode) throws NamingException {
         return processLDAPEnumeration(ctx.search("ou=services, o=nhs", "(&(nhsIDCode=" + odsCode + ")(objectClass=nhsAs))", searchControls));
     }
+
     /**
      *
      * @param results
@@ -153,10 +173,10 @@ public class SdsDump {
 
         // returns party key, asid, list of interactions
         String asid = deviceResults.get("uniqueIdentifier").get(0);
-        ArrayList<String> interactions = deviceResults.get("nhsAsSvcIA");
+        ArrayList<String> interactionIds = deviceResults.get("nhsAsSvcIA");
 
         // iterate through the interactions
-        for (String interactionId : interactions) {
+        for (String interactionId : interactionIds) {
             ahm = queryServiceByOdsCodeInteractionID(ctx, searchControls, odsCode, interactionId);
 
             // remap into a cooked state from the raw state
